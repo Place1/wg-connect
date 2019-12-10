@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/gosuri/uilive"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 		},
 	})
 
-	startTime := time.Now()
+	updateInterval := 500 * time.Millisecond
 	connected := false
 
 	go func() {
@@ -66,19 +67,17 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 			case <-ctx.Done():
 				writer.Stop()
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(updateInterval):
 				device, err := client.Device("wg0")
 				if err != nil {
 					fmt.Fprintf(writer, "failed to get wireguard interface: %v\n", err)
 				} else {
 					peer := device.Peers[0]
-					now := time.Now()
 					connected = peer.LastHandshakeTime != time.Time{}
-					fmt.Fprintf(writer, "connected: %v\n", connected)
-					fmt.Fprintf(writer, "duration: %.0f seconds\n", now.Sub(startTime).Seconds())
-					fmt.Fprintf(writer, "last handshake: %0.f seconds ago\n", now.Sub(peer.LastHandshakeTime).Seconds())
-					fmt.Fprintf(writer, "sent: %v bytes\n", peer.TransmitBytes)
-					fmt.Fprintf(writer, "received: %v bytes\n", peer.ReceiveBytes)
+					fmt.Fprintf(writer, "connected:      %v\n", connected)
+					fmt.Fprintf(writer, "last handshake: %s\n", humanize.Time(peer.LastHandshakeTime))
+					fmt.Fprintf(writer, "sent:           %v\n", humanize.Bytes(uint64(peer.TransmitBytes)))
+					fmt.Fprintf(writer, "received:       %v\n", humanize.Bytes(uint64(peer.ReceiveBytes)))
 				}
 			}
 		}
@@ -120,7 +119,7 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 			}
 			break
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(updateInterval)
 	}
 
 	logrus.Debug("client ready")
