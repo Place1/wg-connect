@@ -10,7 +10,6 @@ import (
 	"github.com/gosuri/uilive"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -56,6 +55,14 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 		},
 	})
 
+	logrus.Debug("client wireguard device configured")
+
+	if err := ifaceUp("wg0", opts.Interface.Address); err != nil {
+		return errors.Wrap(err, "unable to bring wireguard interface up")
+	}
+
+	logrus.Debug("wireguard interface up")
+
 	updateInterval := 500 * time.Millisecond
 	connected := false
 
@@ -83,39 +90,10 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 		}
 	}()
 
-	logrus.Debug("client wireguard device configured")
-
-	link, err := netlink.LinkByName("wg0")
-	if err != nil {
-		return errors.Wrap(err, "failed to find wireguard interface")
-	}
-
-	if err := netlink.LinkSetUp(link); err != nil {
-		logrus.Error(errors.Wrap(err, "failed to bring wireguard interface up"))
-	}
-
-	linkaddr, err := netlink.ParseAddr(opts.Interface.Address)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse wireguard interface ip address")
-	}
-
-	if err := netlink.AddrAdd(link, linkaddr); err != nil {
-		return errors.Wrap(err, "failed to set ip address of wireguard interface")
-	}
-
 	for {
 		if connected {
-			_, allnetip, err := net.ParseCIDR("0.0.0.0/0")
-			if err != nil {
-				return errors.Wrap(err, "failed to parse 0.0.0.0/0 cidr")
-			}
-			err = netlink.RouteAdd(&netlink.Route{
-				LinkIndex: link.Attrs().Index,
-				Dst:       allnetip,
-				Scope:     netlink.SCOPE_LINK,
-			})
-			if err != nil {
-				return errors.Wrap(err, "failed to add network route for wireguard traffic")
+			if err := ifaceDefaultRoute("wg0"); err != nil {
+				return errors.Wrap(err, "failed to set default route wireguard")
 			}
 			break
 		}

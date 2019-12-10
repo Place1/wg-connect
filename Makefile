@@ -1,24 +1,18 @@
 BINARY_NAME := wg-connect
-PLATFORMS := linux/amd64 darwin/amd64 windows/amd64
-GO := go
-TEMP = $(subst /, ,$@)
-OS = $(word 1, $(TEMP))
-ARCH = $(word 2, $(TEMP))
 
 .PHONY: all
-all: test build
+all: linux darwin windows
 
-.PHONY: build
-build: $(PLATFORMS)
+linux:
+	GOOS=linux GOARCH=amd64 go build -o 'bin/$(BINARY_NAME)-linux-amd64'
 
-$(PLATFORMS):
-				GOOS=$(OS) GOARCH=$(arch) $(GO) build -o 'bin/$(BINARY_NAME)-$(OS)-$(ARCH)'
+darwin:
+	GOOS=darwin GOARCH=amd64 go build -o 'bin/$(BINARY_NAME)-darwin-amd64'
 
-.PHONY: test
-test:
-				$(GO) test -v ./...
+windows:
+	GOOS=windows GOARCH=amd64 go build -o 'bin/$(BINARY_NAME)-windows-amd64'
 
 .PHONY: clean
 clean:
-				$(GO) clean
+				go clean
 				rm -f bin/$(BINARY_NAME)-*
