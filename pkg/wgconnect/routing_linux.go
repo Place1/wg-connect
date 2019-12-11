@@ -3,7 +3,10 @@
 package wgconnect
 
 import (
+	"fmt"
 	"net"
+	"os/exec"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -47,10 +50,31 @@ func ifaceDefaultRoute(name string) error {
 		LinkIndex: link.Attrs().Index,
 		Dst:       allnetip,
 		Scope:     netlink.SCOPE_LINK,
+		Priority:  1,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to add network route for wireguard traffic")
 	}
 
 	return nil
+}
+
+func setDNS(name string, upstreams ...string) error {
+	cmd := exec.Command("resolvconf", "-a", "wg0", "-m", "0", "-x")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return errors.Wrap(err, "failed to get cmd stdin pipe")
+	}
+
+	lines := []string{}
+	for _, upstream := range upstreams {
+		lines = append(lines, fmt.Sprintf("namespace %s\n", upstream))
+	}
+
+	if _, err := stdin.Write([]byte(strings.Join(lines, ""))); err != nil {
+		return errors.Wrap(err, "failed to write to cmd stdin")
+	}
+	stdin.Close()
+
+	return cmd.Run()
 }

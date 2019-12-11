@@ -3,13 +3,16 @@ package wgconnect
 import (
 	"context"
 	"sync"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 type ConnectOpts struct {
 	Interface struct {
 		PrivateKey string
 		Address    string
-		DNS        string
+		DNS        []string
 	}
 	Peer struct {
 		PublicKey  string
@@ -26,13 +29,17 @@ func Connect(ctx context.Context, opts ConnectOpts) (err error) {
 
 	waitgroup.Add(1)
 	go func() {
-		err = startWgIface(ctx)
+		if err := startWgIface(ctx); err != nil {
+			logrus.Error(errors.Wrap(err, "failed to start wireguard"))
+		}
 		waitgroup.Done()
 	}()
 
 	waitgroup.Add(1)
 	go func() {
-		err = connectToWg(ctx, opts)
+		if err := connectToWg(ctx, opts); err != nil {
+			logrus.Error(errors.Wrap(err, "failed to connect to wireguard"))
+		}
 		waitgroup.Done()
 	}()
 

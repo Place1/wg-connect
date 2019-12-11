@@ -32,7 +32,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// TODO: from flag
 	configFile, err := ini.Load((*config).Name())
 	if err != nil {
 		logrus.Fatal(errors.Wrap(err, "failed to read wireguard config file"))
