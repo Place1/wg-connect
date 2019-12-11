@@ -3,10 +3,7 @@
 package wgconnect
 
 import (
-	"fmt"
-	"net"
 	"os/exec"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -32,49 +29,34 @@ func ifaceUp(name string, ip string) error {
 		return errors.Wrap(err, "failed to set ip address of wireguard interface")
 	}
 
+	if err := netlink.LinkSetMTU(link, 1420); err != nil {
+		return errors.Wrap(err, "failed to set wireguard mtu")
+	}
+
 	return nil
 }
 
 func ifaceDefaultRoute(name string) error {
-	link, err := netlink.LinkByName(name)
+
+	err := exec.Command("bash", "-c", "echo nameserver 8.8.8.8 | resolvconf -a wg0 -m 0 -x").Run()
 	if err != nil {
-		return errors.Wrap(err, "failed to find wireguard interface")
+		logrus.Fatal(err)
 	}
 
-	_, allnetip, err := net.ParseCIDR("0.0.0.0/0")
-	if err != nil {
-		return errors.Wrap(err, "failed to parse 0.0.0.0/0 cidr")
+	commands := [][]string{
+		[]string{"-6", "route", "add", "::/0", "dev", "wg0", "table", "51820"},
+		[]string{"-6", "rule", "add", "not", "fwmark", "51820", "table", "51820"},
+		[]string{"-6", "rule", "add", "table", "main", "suppress_prefixlength", "0"},
+		[]string{"-4", "route", "add", "0.0.0.0/0", "dev", "wg0", "table", "51820"},
+		[]string{"-4", "rule", "add", "not", "fwmark", "51820", "table", "51820"},
+		[]string{"-4", "rule", "add", "table", "main", "suppress_prefixlength", "0"},
 	}
 
-	err = netlink.RouteAdd(&netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       allnetip,
-		Scope:     netlink.SCOPE_LINK,
-		Priority:  1,
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to add network route for wireguard traffic")
+	for _, cmd := range commands {
+		if err := exec.Command("ip", cmd...).Run(); err != nil {
+			logrus.Fatal(err)
+		}
 	}
 
 	return nil
-}
-
-func setDNS(name string, upstreams ...string) error {
-	cmd := exec.Command("resolvconf", "-a", "wg0", "-m", "0", "-x")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return errors.Wrap(err, "failed to get cmd stdin pipe")
-	}
-
-	lines := []string{}
-	for _, upstream := range upstreams {
-		lines = append(lines, fmt.Sprintf("namespace %s\n", upstream))
-	}
-
-	if _, err := stdin.Write([]byte(strings.Join(lines, ""))); err != nil {
-		return errors.Wrap(err, "failed to write to cmd stdin")
-	}
-	stdin.Close()
-
-	return cmd.Run()
 }

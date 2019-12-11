@@ -44,8 +44,11 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 		return errors.Wrap(err, "failed to parse endpoint address")
 	}
 
+	fwmark := 51820
+
 	err = client.ConfigureDevice("wg0", wgtypes.Config{
-		PrivateKey: &privateKey,
+		PrivateKey:   &privateKey,
+		FirewallMark: &fwmark,
 		Peers: []wgtypes.PeerConfig{
 			wgtypes.PeerConfig{
 				PublicKey:  publicKey,
@@ -64,11 +67,9 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 		return errors.Wrap(err, "unable to bring wireguard interface up")
 	}
 
-	// if len(opts.Interface.DNS) > 0 {
-	// 	if err := setDNS("wg0", opts.Interface.DNS...); err != nil {
-	// 		return errors.Wrap(err, "failed to set wg0 dns")
-	// 	}
-	// }
+	if err := ifaceDefaultRoute("wg0"); err != nil {
+		return errors.Wrap(err, "failed to set default route wireguard")
+	}
 
 	logrus.Debug("wireguard interface up")
 
@@ -98,16 +99,6 @@ func connectToWg(ctx context.Context, opts ConnectOpts) error {
 			}
 		}
 	}()
-
-	for {
-		if connected {
-			if err := ifaceDefaultRoute("wg0"); err != nil {
-				return errors.Wrap(err, "failed to set default route wireguard")
-			}
-			break
-		}
-		time.Sleep(updateInterval)
-	}
 
 	logrus.Debug("client ready")
 	select {
