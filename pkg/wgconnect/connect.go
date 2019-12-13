@@ -1,49 +1,41 @@
 package wgconnect
 
 import (
-	"context"
-	"sync"
-
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+	"github.com/place1/wg-embed/pkg/wgembed"
 )
 
-type ConnectOpts struct {
-	Interface struct {
-		PrivateKey string
-		Address    string
-		DNS        []string
-	}
-	Peer struct {
-		PublicKey  string
-		AllowedIPs []string
-		Endpoint   string
-	}
+type WireGuardVPN struct {
+	iface *wgembed.WireGuardInterface
 }
 
 // Connect will start a userspace wireguard interface
 // and then connect to a peer using the given connect opts
-func Connect(ctx context.Context, opts ConnectOpts) (err error) {
+func Connect(configFile string) (*WireGuardVPN, error) {
+	vpn := &WireGuardVPN{}
 
-	waitgroup := sync.WaitGroup{}
+	wg0, err := wgembed.New("wg0")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create wireguard interface")
+	}
+	vpn.iface = wg0
 
-	waitgroup.Add(1)
-	go func() {
-		if err := startWgIface(ctx); err != nil {
-			logrus.Error(errors.Wrap(err, "failed to start wireguard"))
-		}
-		waitgroup.Done()
-	}()
+	if err := wg0.LoadConfig(configFile); err != nil {
+		return nil, errors.Wrap(err, "failed to configure wireguard interface")
+	}
 
-	waitgroup.Add(1)
-	go func() {
-		if err := connectToWg(ctx, opts); err != nil {
-			logrus.Error(errors.Wrap(err, "failed to connect to wireguard"))
-		}
-		waitgroup.Done()
-	}()
+	if err := VPN(wg0); err != nil {
+		return nil, errors.Wrap(err, "failed to setup vpn networking")
+	}
 
-	waitgroup.Wait()
+	return vpn, nil
+}
 
-	return err
+func (vpn *WireGuardVPN) Iface() *wgembed.WireGuardInterface {
+	return vpn.iface
+}
+
+// Close ends the VPN connection
+func (vpn *WireGuardVPN) Close() error {
+	return vpn.iface.Close()
 }

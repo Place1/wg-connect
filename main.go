@@ -1,26 +1,25 @@
 package main
 
 import (
-	"context"
+	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/place1/wg-embed/pkg/wgembed"
+
+	"github.com/dustin/go-humanize"
+	"github.com/gosuri/uilive"
 	"github.com/place1/wg-connect/pkg/wgconnect"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"gopkg.in/ini.v1"
 )
 
 var (
-	app = kingpin.New("wg-connect", "a cli app to connect to a wireguard VPN server using a userspace wireguard implementation")
-
-	config = app.Arg("config", "a wireguard configuration file").Required().File()
-
-	debug = app.Flag("debug", "enable verbose logging").Bool()
+	app    = kingpin.New("wg-connect", "a cli app to connect to a wireguard VPN server using a userspace wireguard implementation")
+	config = app.Arg("config", "a wireguard configuration file").Required().String()
+	debug  = app.Flag("debug", "enable verbose logging").Bool()
 )
 
 func main() {
@@ -30,31 +29,16 @@ func main() {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	configFile, err := ini.Load((*config).Name())
+	vpn, err := wgconnect.Connect(*config)
 	if err != nil {
-		logrus.Fatal(errors.Wrap(err, "failed to read wireguard config file"))
+		logrus.Error(err)
 	}
 
-	opts := wgconnect.ConnectOpts{}
-	if err := configFile.StrictMapTo(&opts); err != nil {
-		logrus.Fatal(errors.Wrap(err, "failed to parse config"))
-	}
+	go monitor(vpn.Iface())
 
 	term := make(chan os.Signal)
 	signal.Notify(term, syscall.SIGTERM)
 	signal.Notify(term, os.Interrupt)
-
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	go func() {
-		if err := wgconnect.Connect(ctx, opts); err != nil {
-			logrus.Fatal(errors.Wrap(err, "wireguard client crash"))
-		}
-		wg.Done()
-	}()
 
 	select {
 	case <-term:
@@ -62,17 +46,26 @@ func main() {
 
 	logrus.Debug("shutting down...")
 
-	cancel()
+	vpn.Close()
+}
 
-	c := make(chan struct{})
-	go func() {
-		wg.Wait()
-		c <- struct{}{}
-	}()
-
-	select {
-	case <-c:
-	case <-time.After(1 * time.Second):
-		logrus.Error("shutdown timeout exceeded. exiting.")
+func monitor(iface *wgembed.WireGuardInterface) error {
+	writer := uilive.New()
+	writer.Start()
+	for {
+		time.Sleep(1 * time.Second)
+		device, err := iface.Device()
+		if err != nil {
+			fmt.Fprintf(writer, "failed to get wireguard interface: %v\n", err)
+		} else {
+			if len(device.Peers) > 0 {
+				peer := device.Peers[0]
+				connected := peer.LastHandshakeTime != time.Time{}
+				fmt.Fprintf(writer, "connected:      %v\n", connected)
+				fmt.Fprintf(writer, "last handshake: %s\n", humanize.Time(peer.LastHandshakeTime))
+				fmt.Fprintf(writer, "sent:           %v\n", humanize.Bytes(uint64(peer.TransmitBytes)))
+				fmt.Fprintf(writer, "received:       %v\n", humanize.Bytes(uint64(peer.ReceiveBytes)))
+			}
+		}
 	}
 }
