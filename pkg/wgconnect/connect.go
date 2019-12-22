@@ -20,7 +20,27 @@ func Connect(configFile string) (*WireGuardVPN, error) {
 	}
 	vpn.iface = wg0
 
-	if err := wg0.LoadConfig(configFile); err != nil {
+	if err := wg0.LoadConfigFile(configFile); err != nil {
+		return nil, errors.Wrap(err, "failed to configure wireguard interface")
+	}
+
+	if err := VPN(wg0); err != nil {
+		return nil, errors.Wrap(err, "failed to setup vpn networking")
+	}
+
+	return vpn, nil
+}
+
+func ConnectWithConfig(config *wgembed.ConfigFile) (*WireGuardVPN, error) {
+	vpn := &WireGuardVPN{}
+
+	wg0, err := wgembed.New("wg0")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create wireguard interface")
+	}
+	vpn.iface = wg0
+
+	if err := wg0.LoadConfig(config); err != nil {
 		return nil, errors.Wrap(err, "failed to configure wireguard interface")
 	}
 
