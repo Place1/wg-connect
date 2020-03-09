@@ -9,7 +9,7 @@ require (
 	github.com/gosuri/uilive v0.0.3
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/place1/wg-embed v0.0.0
+	github.com/place1/wg-embed v0.1.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/vishvananda/netlink v1.0.0
