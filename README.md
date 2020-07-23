@@ -1,6 +1,8 @@
 # wg-connect
 
-wip
+```
+go get github.com/place1/wg-connect
+```
 
 ## Usage
 
